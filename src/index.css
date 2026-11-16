@@ -1,0 +1,74 @@
+@import url("https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
+@import "leaflet/dist/leaflet.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+    color-scheme: light;
+  }
+
+  * {
+    border-color: #E2DED4;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    min-height: 100vh;
+    background-color: #F5F1E8;
+    color: #17201B;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background-color: #234C3B;
+    color: #FFFDF8;
+  }
+
+  #root {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  h1, h2, h3, h4 {
+    letter-spacing: -0.025em;
+    color: #17201B;
+  }
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F5F1E8;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D5D0C4;
+  border-radius: 9999px;
+  border: 2px solid #F5F1E8;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #829A87;
+}
+
+/* Clean image hover effect */
+.editorial-img-zoom {
+  transition: transform 0.3s cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+.group:hover .editorial-img-zoom {
+  transform: scale(1.035);
+}
