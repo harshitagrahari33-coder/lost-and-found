@@ -121,12 +121,48 @@ The platform strictly verifies users via `@kiet.edu` emails. To send real OTP ve
 | `PATCH` | `/api/items/:id` | Bearer | Update report (reporter or admin only) |
 | `DELETE` | `/api/items/:id` | Bearer | Delete report (reporter or admin only) |
 | `POST` | `/api/items/:id/resolve` | Bearer | Mark item as reunited/resolved with timestamp and resolver ID |
+| `POST` | `/api/items/matches/preview` | Bearer | Preview up to five active opposite-type matches for a draft report |
+| `GET` | `/api/items/:id/matches` | Bearer (owner/admin) | Retrieve saved-report matches for an active report |
 
 ### Campus Locations & Directions
 | Method | Path | Auth | Description |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/locations/campus` | Public | List static KIET campus landmarks with GPS coordinates |
 | `GET` | `/api/locations/directions` | Public | Returns deep-links for Google Maps and OpenStreetMap |
+
+### Smart Matching
+
+Smart Matching compares a lost report only with active found reports (and vice
+versa). It is a heuristic score out of 100:
+
+- Category: 25 points when categories match.
+- Title: up to 35 points using normalized keyword Jaccard similarity.
+- Description: up to 20 points using normalized keyword similarity.
+- Location: up to 15 points based on approximate location proximity or matching
+  location text.
+- Date: up to 5 points for reports within one day, with lower points through
+  seven days.
+
+Before a candidate is added to the final results, it must have at least one of:
+`titleSimilarity >= 0.20` or `descriptionSimilarity >= 0.20`. Results below the
+minimum score of 32 are omitted, and the service keeps only the five
+highest-scoring candidates while iterating a MongoDB cursor. Confidence labels are
+`High` (75-100), `Moderate` (55-74), and `Low` (below 55); they are heuristic
+labels, not probabilities.
+
+Only authenticated users can use the preview endpoint, and saved results require
+the report owner or an administrator. Exact location distances, candidate
+latitude/longitude values, and private reporter data are not included in matching
+responses. The response includes approximate human-readable reasons such as
+"Nearby locations" or "Description details are similar".
+
+Preview request fields are `type`, `title`, `description`, `category`,
+`location` (`name`, `address`, `latitude`, `longitude`), and an optional `date`.
+Both endpoints return `{ success: true, data: { matches: [...] } }`, where each
+match contains `item`, `score`, `confidence`, and `reasons`. Resolved and
+archived source or candidate reports are excluded. Matching evaluates all active
+opposite-type candidates, so older active reports are not arbitrarily dropped; the
+compound type/status/createdAt index supports the candidate filter.
 
 ### Reports & Moderation
 | Method | Path | Auth | Description |

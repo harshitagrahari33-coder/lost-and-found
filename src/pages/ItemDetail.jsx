@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import {
   ArrowLeft,
@@ -30,7 +30,6 @@ import LeafletMap from "@/components/items/LeafletMap";
 import { useItems } from "@/lib/ItemsContext";
 import { useAuth } from "@/lib/AuthContext";
 import { itemService } from "@/services/itemService";
-import { findPotentialMatches } from "@/utils/matchingEngine";
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=1200&q=85";
@@ -46,7 +45,7 @@ const REPORT_REASONS = [
 export default function ItemDetail() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const { items, getItem, getSimilarItems, resolveItem } = useItems();
+  const { getItem, getSimilarItems, resolveItem } = useItems();
   const { currentUser, isAuthenticated } = useAuth();
 
   const [item, setItem] = useState(() => getItem(id));
@@ -54,6 +53,9 @@ export default function ItemDetail() {
   const [isLoading, setIsLoading] = useState(!item);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [messageCount, setMessageCount] = useState(0);
+  const [potentialMatches, setPotentialMatches] = useState([]);
+  const [isLoadingMatches, setIsLoadingMatches] = useState(false);
+  const [matchError, setMatchError] = useState("");
 
   // Report modal state
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -95,11 +97,6 @@ export default function ItemDetail() {
     };
   }, [id]);
 
-  const potentialMatches = useMemo(
-    () => (item ? findPotentialMatches(item, items) : []),
-    [item, items]
-  );
-
   const currentUserId = (currentUser?._id || currentUser?.id)?.toString();
   const reporterUserId = (item?.reporterId?._id || item?.reporterId)?.toString();
   const reporterName =
@@ -107,10 +104,35 @@ export default function ItemDetail() {
     item?.user ||
     (typeof item?.reporterId === "string" ? "Campus Reporter" : "Campus Member");
   const isOwner = Boolean(
-    (currentUserId && reporterUserId && currentUserId === reporterUserId) ||
-    (currentUser?.username && (currentUser.username === item?.user || currentUser.username === reporterName)) ||
-    (currentUser?.name && (currentUser.name === item?.user || currentUser.name === reporterName))
+    currentUserId && reporterUserId && currentUserId === reporterUserId
   );
+  const isAdmin = currentUser?.role === "admin";
+
+  useEffect(() => {
+    if (!item || item.status !== "active" || !isAuthenticated || (!isOwner && !isAdmin)) {
+      setPotentialMatches([]);
+      setMatchError("");
+      return undefined;
+    }
+
+    let active = true;
+    setIsLoadingMatches(true);
+    setMatchError("");
+    itemService.getMatchesForItem(item._id || item.id)
+      .then((matches) => {
+        if (active) setPotentialMatches(matches.slice(0, 3));
+      })
+      .catch((error) => {
+        if (active) setMatchError(error.response?.data?.message || "Matching results are temporarily unavailable.");
+      })
+      .finally(() => {
+        if (active) setIsLoadingMatches(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [item, isAuthenticated, isOwner, isAdmin]);
 
   const similarItems = item ? getSimilarItems(item, 4) : [];
   const timeAgo = item?.createdAt ? formatDistanceToNow(new Date(item.createdAt), { addSuffix: true }) : "";
@@ -425,58 +447,45 @@ export default function ItemDetail() {
           </div>
 
           {/* AI / Smart Potential Match Banner */}
-          {potentialMatches.length > 0 && (
+          {(isOwner || isAdmin) && item.status === "active" && (
             <div className="rounded-2xl border border-accentGold/60 bg-accentGold-surface p-4 space-y-3 shadow-subtle animate-fade-in">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-accentGold-dark" />
                   <span className="text-xs font-bold uppercase tracking-wider text-accentGold-dark">
-                    Smart Match Detected ({potentialMatches[0].score}% Confidence)
+                    Smart Matching
                   </span>
                 </div>
                 <span className="text-[11px] font-medium text-ink-muted">
-                  {potentialMatches.length} candidate{potentialMatches.length > 1 ? "s" : ""}
+                  {isLoadingMatches ? "Searching..." : `${potentialMatches.length} candidate${potentialMatches.length === 1 ? "" : "s"}`}
                 </span>
               </div>
 
-              <p className="text-xs text-ink leading-relaxed">
-                Our campus discovery engine found an active{" "}
-                <strong className="text-forest uppercase font-bold">{potentialMatches[0].item.type}</strong> listing matching this report!
-              </p>
-
-              {/* Best Candidate Mini Card */}
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-borderWarm bg-cream-surface p-3 shadow-xs">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  {potentialMatches[0].item.imageUrl && (
-                    <img
-                      src={potentialMatches[0].item.imageUrl}
-                      alt={potentialMatches[0].item.title}
-                      className="h-12 w-12 rounded-lg object-cover border border-borderWarm flex-shrink-0"
-                    />
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-ink truncate">
-                      {potentialMatches[0].item.title}
-                    </p>
-                    <p className="text-[11px] text-ink-muted truncate">
-                      📍 {typeof potentialMatches[0].item.location === "string" ? potentialMatches[0].item.location : potentialMatches[0].item.location?.name}
-                    </p>
-                    {potentialMatches[0].reasons?.length > 0 && (
-                      <p className="text-[10px] text-forest font-medium truncate mt-0.5">
-                        ✓ {potentialMatches[0].reasons[0]}
-                      </p>
-                    )}
-                  </div>
+              {isLoadingMatches ? (
+                <div className="flex items-center gap-2 text-xs text-ink-muted"><Loader2 className="h-4 w-4 animate-spin" /> Finding active reports...</div>
+              ) : matchError ? (
+                <p className="text-xs text-ink-muted">{matchError}</p>
+              ) : potentialMatches.length === 0 ? (
+                <p className="text-xs text-ink-muted">No potential matches found yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {potentialMatches.map((match) => (
+                    <div key={match.item.id || match.item._id} className="flex items-center justify-between gap-3 rounded-xl border border-borderWarm bg-cream-surface p-3 shadow-xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {match.item.imageUrl && <img src={match.item.imageUrl} alt={match.item.title} className="h-12 w-12 rounded-lg object-cover border border-borderWarm flex-shrink-0" />}
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-ink truncate">{match.item.title}</p>
+                          <p className="text-[11px] text-ink-muted truncate">{match.item.category} · {match.item.location}</p>
+                          <p className="text-[10px] text-forest font-medium truncate mt-0.5">{match.score}% · {match.reasons?.slice(0, 2).join(" · ")}</p>
+                        </div>
+                      </div>
+                      <Link to={`/item/${match.item.id || match.item._id}`} className="flex-shrink-0 inline-flex items-center gap-1 rounded-lg bg-forest px-3 py-1.5 text-xs font-medium text-cream-surface hover:bg-forest-hover transition-colors">
+                        <span>Compare</span><ArrowRight className="h-3 w-3" />
+                      </Link>
+                    </div>
+                  ))}
                 </div>
-
-                <Link
-                  to={`/item/${potentialMatches[0].item.id || potentialMatches[0].item._id}`}
-                  className="flex-shrink-0 inline-flex items-center gap-1 rounded-lg bg-forest px-3 py-1.5 text-xs font-medium text-cream-surface hover:bg-forest-hover transition-colors"
-                >
-                  <span>Compare</span>
-                  <ArrowRight className="h-3 w-3" />
-                </Link>
-              </div>
+              )}
             </div>
           )}
 

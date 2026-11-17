@@ -106,6 +106,7 @@ const itemSchema = new mongoose.Schema(
 // Indexes
 itemSchema.index({ title: 'text', description: 'text' });
 itemSchema.index({ createdAt: -1 });
+itemSchema.index({ type: 1, status: 1, createdAt: -1 });
 itemSchema.index({ 'location.geo': '2dsphere' });
 
 const Item = mongoose.model('Item', itemSchema);

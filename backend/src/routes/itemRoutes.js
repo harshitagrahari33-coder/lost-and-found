@@ -5,6 +5,8 @@ const itemController = require('../controllers/itemController');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { upload, validateMagicBytes } = require('../middleware/upload');
 const ApiError = require('../utils/ApiError');
+const { validateBody } = require('../middleware/validate');
+const { matchPreviewSchema } = require('../utils/validators');
 
 function validateIdParam(req, res, next) {
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
@@ -14,6 +16,8 @@ function validateIdParam(req, res, next) {
 }
 
 router.get('/', optionalAuth, itemController.getItems);
+router.post('/matches/preview', requireAuth, validateBody(matchPreviewSchema), itemController.previewMatches);
+router.get('/:id/matches', validateIdParam, requireAuth, itemController.getItemMatches);
 router.get('/:id', validateIdParam, optionalAuth, itemController.getItemById);
 router.get('/:id/location', validateIdParam, optionalAuth, itemController.getItemLocation);
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -17,7 +17,6 @@ import { useAuth } from "@/lib/AuthContext";
 import { useItems, CATEGORIES } from "@/lib/ItemsContext";
 import { itemService } from "@/services/itemService";
 import LeafletMap from "@/components/items/LeafletMap";
-import { findPotentialMatches } from "@/utils/matchingEngine";
 
 const DEFAULT_CAMPUS_LOCATIONS = [
   {
@@ -95,7 +94,7 @@ const initialFormState = {
 export default function AddItem() {
   const navigate = useNavigate();
   const { currentUser, isAuthenticated } = useAuth();
-  const { items, createItem } = useItems();
+  const { createItem } = useItems();
   const [form, setForm] = useState(initialFormState);
   const [selectedFile, setSelectedFile] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -104,25 +103,59 @@ export default function AddItem() {
   const [campusLocations, setCampusLocations] = useState(DEFAULT_CAMPUS_LOCATIONS);
   const [selectedPresetId, setSelectedPresetId] = useState("central-library");
   const [isLocating, setIsLocating] = useState(false);
+  const [liveMatches, setLiveMatches] = useState([]);
+  const [isMatching, setIsMatching] = useState(false);
+  const [matchError, setMatchError] = useState("");
 
-  // Live match detection while user fills form
-  const draftItem = useMemo(
-    () => ({
-      type: form.type,
-      title: form.title,
-      description: form.description,
-      category: form.category,
-      location: form.locationName,
-      latitude: form.latitude,
-      longitude: form.longitude,
-    }),
-    [form]
-  );
+  useEffect(() => {
+    setLiveMatches([]);
+    setMatchError("");
+    if (!isAuthenticated || form.title.trim().length < 3) {
+      setIsMatching(false);
+      return undefined;
+    }
 
-  const liveMatches = useMemo(() => {
-    if (!form.title || form.title.trim().length < 3) return [];
-    return findPotentialMatches(draftItem, items, 40);
-  }, [draftItem, items]);
+    let active = true;
+    const timer = setTimeout(async () => {
+      setIsMatching(true);
+      try {
+        const matches = await itemService.previewMatches({
+          type: form.type,
+          title: form.title,
+          description: form.description,
+          category: form.category,
+          location: {
+            name: form.locationName,
+            address: form.address,
+            latitude: form.latitude,
+            longitude: form.longitude,
+          },
+          date: form.date || undefined,
+        });
+        if (active) setLiveMatches(matches.slice(0, 3));
+      } catch (error) {
+        if (active) setMatchError(error.response?.data?.message || "Matching is temporarily unavailable.");
+      } finally {
+        if (active) setIsMatching(false);
+      }
+    }, 500);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [
+    form.type,
+    form.title,
+    form.description,
+    form.category,
+    form.locationName,
+    form.address,
+    form.latitude,
+    form.longitude,
+    form.date,
+    isAuthenticated,
+  ]);
 
   useEffect(() => {
     async function loadCampusLocations() {
@@ -387,19 +420,25 @@ export default function AddItem() {
                 className="h-11 w-full rounded-xl border border-borderWarm bg-cream/40 px-3.5 text-sm text-ink placeholder:text-ink-light outline-none transition focus:border-forest focus:bg-cream-surface focus:ring-1 focus:ring-forest"
               />
 
-              {/* Instant Match Notification */}
-              {liveMatches.length > 0 && (
+              {(isMatching || liveMatches.length > 0 || matchError || (form.title.trim().length >= 3 && !isMatching && !matchError)) && (
                 <div className="mt-2.5 rounded-xl border border-accentGold/60 bg-accentGold-surface p-3 space-y-2 animate-fade-in">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-accentGold-dark flex items-center gap-1.5">
                       <Sparkles className="h-3.5 w-3.5" />
-                      {liveMatches.length} matching {form.type === "lost" ? "found" : "lost"} item{liveMatches.length > 1 ? "s" : ""} on campus!
+                      Smart Matching
                     </span>
-                    <span className="text-[10px] text-ink-muted">Did someone already report this?</span>
+                    {isMatching && <Loader2 className="h-3.5 w-3.5 animate-spin text-accentGold-dark" />}
                   </div>
 
-                  <div className="space-y-1.5 pt-1">
-                    {liveMatches.slice(0, 2).map((m) => (
+                  {matchError ? (
+                    <p className="text-[11px] text-ink-muted">{matchError}</p>
+                  ) : isMatching ? (
+                    <p className="text-[11px] text-ink-muted">Searching active {form.type === "lost" ? "found" : "lost"} reports...</p>
+                  ) : liveMatches.length === 0 ? (
+                    <p className="text-[11px] text-ink-muted">No potential matches found yet. We'll keep your report available for future matches.</p>
+                  ) : (
+                    <div className="space-y-1.5 pt-1">
+                    {liveMatches.map((m) => (
                       <div
                         key={m.item.id || m.item._id}
                         className="flex items-center justify-between gap-2 rounded-lg bg-cream-surface p-2 text-xs border border-borderWarm"
@@ -414,21 +453,22 @@ export default function AddItem() {
                           )}
                           <div className="min-w-0">
                             <p className="font-semibold text-ink truncate text-[11px]">{m.item.title}</p>
-                            <p className="text-[10px] text-ink-muted truncate">📍 {typeof m.item.location === "string" ? m.item.location : m.item.location?.name}</p>
+                            <p className="text-[10px] text-ink-muted truncate">{m.item.category} · {m.item.location}</p>
+                            <p className="text-[10px] text-forest truncate">{m.score}% · {m.reasons?.slice(0, 2).join(" · ")}</p>
                           </div>
                         </div>
 
-                        <a
-                          href={`/item/${m.item.id || m.item._id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/item/${m.item.id || m.item._id}`)}
                           className="flex-shrink-0 text-[11px] font-semibold text-forest hover:underline flex items-center gap-0.5"
                         >
                           View <ArrowRight className="h-3 w-3" />
-                        </a>
+                        </button>
                       </div>
                     ))}
                   </div>
+                  )}
                 </div>
               )}
             </div>

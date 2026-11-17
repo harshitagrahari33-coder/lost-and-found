@@ -1,7 +1,8 @@
 const itemService = require('../services/itemService');
-const { createItemSchema, updateItemSchema } = require('../utils/validators');
+const { createItemSchema, updateItemSchema, matchPreviewSchema } = require('../utils/validators');
 const ApiError = require('../utils/ApiError');
 const asyncHandler = require('../utils/asyncHandler');
+const matchingService = require('../services/matchingService');
 
 const getItems = asyncHandler(async (req, res) => {
   const result = await itemService.getItems(req.query);
@@ -84,6 +85,17 @@ const getItemLocation = asyncHandler(async (req, res) => {
   });
 });
 
+const previewMatches = asyncHandler(async (req, res) => {
+  const draft = matchPreviewSchema.parse(req.body);
+  const matches = await matchingService.previewMatches(draft);
+  res.status(200).json({ success: true, data: { matches } });
+});
+
+const getItemMatches = asyncHandler(async (req, res) => {
+  const matches = await matchingService.getMatchesForItem(req.params.id, req.user);
+  res.status(200).json({ success: true, data: { matches } });
+});
+
 module.exports = {
   getItems,
   getItemById,
@@ -92,4 +104,6 @@ module.exports = {
   deleteItem,
   resolveItem,
   getItemLocation,
+  previewMatches,
+  getItemMatches,
 };

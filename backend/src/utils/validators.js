@@ -60,6 +60,38 @@ const verifyOtpSchema = z.object({
   name: z.string().trim().min(2).max(60).optional(),
 });
 
+const latitudeSchema = z.preprocess((value) => {
+  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) {
+    return undefined;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : value;
+  }
+
+  return value;
+}, z.number({ required_error: 'Latitude is required', invalid_type_error: 'Latitude must be a number' })
+  .refine((value) => Number.isFinite(value), { message: 'Latitude must be finite' })
+  .refine((value) => value >= -90 && value <= 90, { message: 'Latitude must be between -90 and 90' }));
+
+const longitudeSchema = z.preprocess((value) => {
+  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) {
+    return undefined;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : value;
+  }
+
+  return value;
+}, z.number({ required_error: 'Longitude is required', invalid_type_error: 'Longitude must be a number' })
+  .refine((value) => Number.isFinite(value), { message: 'Longitude must be finite' })
+  .refine((value) => value >= -180 && value <= 180, { message: 'Longitude must be between -180 and 180' }));
+
 const createItemSchema = z.object({
   type: z.enum(['lost', 'found']),
   title: z.string().trim().min(2, 'Title too short').max(120, 'Title too long'),
@@ -77,13 +109,39 @@ const createItemSchema = z.object({
   location: z.object({
     name: z.string().trim().min(2).max(120),
     address: z.string().trim().max(250).optional().default(''),
-    latitude: z.coerce.number().min(-90).max(90),
-    longitude: z.coerce.number().min(-180).max(180),
+    latitude: latitudeSchema,
+    longitude: longitudeSchema,
   }),
   date: z.string().optional(),
 });
 
 const updateItemSchema = createItemSchema.partial();
+
+const matchPreviewSchema = z.object({
+  type: z.enum(['lost', 'found']),
+  title: z.string().trim().min(3, 'Title must be at least 3 characters').max(120),
+  description: z.string().trim().max(2000).default(''),
+  category: z.enum([
+    'Electronics',
+    'Accessories',
+    'Documents',
+    'Bags',
+    'Clothing',
+    'Stationery',
+    'Keys',
+    'Other',
+  ]),
+  location: z.object({
+    name: z.string().trim().min(2).max(120),
+    address: z.string().trim().max(250).optional().default(''),
+    latitude: latitudeSchema,
+    longitude: longitudeSchema,
+  }),
+  date: z.string().optional().refine(
+    (value) => value === undefined || !Number.isNaN(new Date(value).getTime()),
+    { message: 'Date must be valid' }
+  ),
+});
 
 const createReportSchema = z.object({
   itemId: z.string().refine(isValidObjectId, { message: 'Invalid itemId' }),
@@ -112,6 +170,7 @@ module.exports = {
   verifyOtpSchema,
   createItemSchema,
   updateItemSchema,
+  matchPreviewSchema,
   createReportSchema,
   sendMessageSchema,
 };

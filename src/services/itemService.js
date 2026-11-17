@@ -44,6 +44,22 @@ export const itemService = {
     return res.data.data;
   },
 
+  async previewMatches(draft) {
+    const res = await api.post('/items/matches/preview', draft);
+    return (res.data.data.matches || []).map((match) => ({
+      ...match,
+      item: normalizeItem(match.item),
+    }));
+  },
+
+  async getMatchesForItem(id) {
+    const res = await api.get(`/items/${id}/matches`);
+    return (res.data.data.matches || []).map((match) => ({
+      ...match,
+      item: normalizeItem(match.item),
+    }));
+  },
+
   async createItem(formData) {
     const res = await api.post('/items', formData, {
       headers: {
